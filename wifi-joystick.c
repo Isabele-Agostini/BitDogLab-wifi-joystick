@@ -1,4 +1,3 @@
-// pico_w_wifi_complete_example.c
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
@@ -6,20 +5,15 @@
 #include <string.h>
 #include <stdio.h>
 
-#define LED_PIN 12
-#define BUTTON1_PIN 5
-#define BUTTON2_PIN 6
 #define JOY_X_PIN 26
 #define JOY_Y_PIN 27
 #define WIFI_SSID "Familia Silva"
 #define WIFI_PASS "saladadefruta"
 
-char button1_message[50] = "Nenhum evento no botão 1";
-char button2_message[50] = "Nenhum evento no botão 2";
-char http_response[1024];
-
 uint16_t joystick_x = 0;
 uint16_t joystick_y = 0;
+char joystick_direction[20] = "Centro";
+char http_response[4096];
 
 void read_joystick() {
     adc_select_input(0);
@@ -29,40 +23,83 @@ void read_joystick() {
     joystick_y = adc_read();
 }
 
-void create_http_response() {
-    snprintf(http_response, sizeof(http_response),
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n"
-        "<!DOCTYPE html>"
-        "<html>"
-        "<head>"
-        "<meta charset=\"UTF-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
-        "<title>Controle do LED e Botões</title>"
-        "</head>"
-        "<body>"
-        "<h1>Controle do LED e Botões</h1>"
-        "<p><a href=\"/led/on\">Ligar LED</a></p>"
-        "<p><a href=\"/led/off\">Desligar LED</a></p>"
-        "<p><a href=\"/update\">Atualizar Estado</a></p>"
-        "<h2>Estado dos Botões:</h2>"
-        "<p>Botão 1: %s</p>"
-        "<p>Botão 2: %s</p>"
-        "<h2>Joystick:</h2>"
-        "<p>X: %d</p>"
-        "<p>Y: %d</p>"
-        "</body>"
-        "</html>\r\n",
-        button1_message, button2_message, joystick_x, joystick_y);
+void detect_joystick_direction() {
+    int center = 2048;
+    int deadzone = 500;
+
+    int x = (int)joystick_x - center;
+    int y = (int)joystick_y - center;
+
+    if (abs(x) < deadzone && abs(y) < deadzone) {
+        strcpy(joystick_direction, "Centro");
+    } else if (abs(x) < deadzone && y > deadzone) {
+        strcpy(joystick_direction, "Norte");
+    } else if (abs(x) < deadzone && y < -deadzone) {
+        strcpy(joystick_direction, "Sul");
+    } else if (x > deadzone && abs(y) < deadzone) {
+        strcpy(joystick_direction, "Leste");
+    } else if (x < -deadzone && abs(y) < deadzone) {
+        strcpy(joystick_direction, "Oeste");
+    } else if (x > deadzone && y > deadzone) {
+        strcpy(joystick_direction, "Nordeste");
+    } else if (x > deadzone && y < -deadzone) {
+        strcpy(joystick_direction, "Sudeste");
+    } else if (x < -deadzone && y > deadzone) {
+        strcpy(joystick_direction, "Noroeste");
+    } else if (x < -deadzone && y < -deadzone) {
+        strcpy(joystick_direction, "Sudoeste");
+    }
 }
 
-static err_t http_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
+void create_http_response() {
+    snprintf(http_response, sizeof(http_response),
+    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n"
+    "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">"
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    "<link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css\" rel=\"stylesheet\">"
+    "<style>"
+    ".compass { display: grid; grid-template-columns: repeat(3, 80px); grid-gap: 10px; justify-content: center; align-items: center; margin-top: 20px; }"
+    ".direction { background: #f8f9fa; padding: 20px; border-radius: 8px; font-weight: bold; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }"
+    ".active { background-color: #0d6efd; color: white; }"
+    "</style></head><body class=\"text-center p-4\">"
+
+    "<h1 class=\"mb-4\">Direção do Joystick</h1>"
+    "<p><strong>X:</strong> %d</p><p><strong>Y:</strong> %d</p>"
+    "<h2 class=\"mt-3\">Direção: <span class=\"text-primary\">%s</span></h2>"
+
+    "<div class=\"compass\">"
+        "<div class=\"direction %s\">Noroeste</div>"
+        "<div class=\"direction %s\">Norte</div>"
+        "<div class=\"direction %s\">Nordeste</div>"
+        "<div class=\"direction %s\">Oeste</div>"
+        "<div class=\"direction %s\">Centro</div>"
+        "<div class=\"direction %s\">Leste</div>"
+        "<div class=\"direction %s\">Sudoeste</div>"
+        "<div class=\"direction %s\">Sul</div>"
+        "<div class=\"direction %s\">Sudeste</div>"
+    "</div>"
+
+    "<a href=\"/\" class=\"btn btn-primary mt-4\">Atualizar</a>"
+
+    "</body></html>\r\n",
+    joystick_x, joystick_y, joystick_direction,
+    strcmp(joystick_direction, "Noroeste") == 0 ? "active" : "",
+    strcmp(joystick_direction, "Norte") == 0 ? "active" : "",
+    strcmp(joystick_direction, "Nordeste") == 0 ? "active" : "",
+    strcmp(joystick_direction, "Oeste") == 0 ? "active" : "",
+    strcmp(joystick_direction, "Centro") == 0 ? "active" : "",
+    strcmp(joystick_direction, "Leste") == 0 ? "active" : "",
+    strcmp(joystick_direction, "Sudoeste") == 0 ? "active" : "",
+    strcmp(joystick_direction, "Sul") == 0 ? "active" : "",
+    strcmp(joystick_direction, "Sudeste") == 0 ? "active" : ""
+    );
+}
+
+err_t http_callback(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
     if (p == NULL) {
         tcp_close(tpcb);
         return ERR_OK;
     }
-    char *request = (char *)p->payload;
-    if (strstr(request, "GET /led/on")) gpio_put(LED_PIN, 1);
-    else if (strstr(request, "GET /led/off")) gpio_put(LED_PIN, 0);
 
     create_http_response();
     tcp_write(tpcb, http_response, strlen(http_response), TCP_WRITE_FLAG_COPY);
@@ -83,42 +120,11 @@ static void start_http_server(void) {
     tcp_accept(pcb, connection_callback);
 }
 
-void monitor_buttons() {
-    static bool button1_last_state = false;
-    static bool button2_last_state = false;
-
-    bool button1_state = !gpio_get(BUTTON1_PIN); // Botão pressionado = LOW
-    bool button2_state = !gpio_get(BUTTON2_PIN);
-
-    if (button1_state != button1_last_state) {
-        button1_last_state = button1_state;
-        if (button1_state) {
-            snprintf(button1_message, sizeof(button1_message), "Botão 1 foi pressionado!");
-            printf("Botão 1 pressionado\n");
-        } else {
-            snprintf(button1_message, sizeof(button1_message), "Botão 1 foi solto!");
-            printf("Botão 1 solto\n");
-        }
-    }
-
-    if (button2_state != button2_last_state) {
-        button2_last_state = button2_state;
-        if (button2_state) {
-            snprintf(button2_message, sizeof(button2_message), "Botão 2 foi pressionado!");
-            printf("Botão 2 pressionado\n");
-        } else {
-            snprintf(button2_message, sizeof(button2_message), "Botão 2 foi solto!");
-            printf("Botão 2 solto\n");
-        }
-    }
-}
-
 int main() {
     stdio_init_all();
     sleep_ms(5000);
     printf("Iniciando servidor HTTP\n");
 
-    // Inicializa o Wi-Fi
     if (cyw43_arch_init()) {
         printf("Erro ao inicializar o Wi-Fi\n");
         return 1;
@@ -130,24 +136,11 @@ int main() {
     if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASS, CYW43_AUTH_WPA2_AES_PSK, 10000)) {
         printf("Falha ao conectar ao Wi-Fi\n");
         return 1;
-    }else {
-        printf("Connected.\n");
-        // Read the ip address in a human readable way
-        uint8_t *ip_address = (uint8_t*)&(cyw43_state.netif[0].ip_addr.addr);
-        printf("Endereço IP %d.%d.%d.%d\n", ip_address[0], ip_address[1], ip_address[2], ip_address[3]);
+    } else {
+        printf("Wi-Fi conectado com sucesso!\n");
+        uint8_t *ip = (uint8_t*)&(cyw43_state.netif[0].ip_addr.addr);
+        printf("Endereço IP: %d.%d.%d.%d\n", ip[0], ip[1], ip[2], ip[3]);
     }
-
-    printf("Wi-Fi conectado!\n");
-
-
-    gpio_init(LED_PIN);
-    gpio_set_dir(LED_PIN, GPIO_OUT);
-    gpio_init(BUTTON1_PIN);
-    gpio_set_dir(BUTTON1_PIN, GPIO_IN);
-    gpio_pull_up(BUTTON1_PIN);
-    gpio_init(BUTTON2_PIN);
-    gpio_set_dir(BUTTON2_PIN, GPIO_IN);
-    gpio_pull_up(BUTTON2_PIN);
 
     adc_init();
     adc_gpio_init(JOY_X_PIN);
@@ -157,11 +150,11 @@ int main() {
 
     while (true) {
         cyw43_arch_poll();
-        monitor_buttons();
         read_joystick();
-        sleep_ms(100);
+        detect_joystick_direction();
+        sleep_ms(200);
     }
 
     cyw43_arch_deinit();
     return 0;
-} 
+}
